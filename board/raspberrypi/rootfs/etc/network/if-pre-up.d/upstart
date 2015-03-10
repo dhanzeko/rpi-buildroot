@@ -1,0 +1,51 @@
+#!/bin/sh -e
+MARK_DEV_PREFIX="/run/network/ifup."
+MARK_STATIC_NETWORK_EMITTED="/run/network/static-network-up-emitted"
+
+
+wait_for_interface() {
+   COUNTER=0
+   echo "waiting for network interface $IFACE"
+   while [ $COUNTER -lt 10 ]; do
+      if [ "`cat /proc/net/dev | grep $IFACE | awk '{print $1}' | sed -e 's/://'`" = "" ]; then
+         let COUNTER=COUNTER+1
+	 echo "Waiting for network ... ($COUNTER)"
+         sleep 1
+      else
+         COUNTER=10
+      fi
+   done
+}
+
+get_auto_interfaces() {
+	# write to stdout a list of interfaces configured as 'auto' in interfaces(5)
+	local found=""
+	# stderr redirected as it outputs things like:
+	# Ignoring unknown interface eth0=eth0.
+	found=$(ifquery --list --allow auto 2>/dev/null) || return
+	set -- ${found}
+	echo "$@"
+}
+
+all_interfaces_up() {
+	# return true if all interfaces listed in /etc/network/interfaces as 'auto'
+	# are up.  if no interfaces are found there, then "all [given] were up"
+	local prefix="$1" iface=""
+	for iface in $(get_auto_interfaces); do
+		# if cur interface does is not up, then all have not been brought up
+		[ -f "${prefix}${iface}" ] || return 1
+	done
+	return 0
+}
+
+if [ "$ADDRFAM" = "meta" ]; then
+    echo "upstart: ifup -a"
+fi
+
+echo "upstart: " \
+	"IFACE=$IFACE" \
+        "LOGICAL=$LOGICAL" \
+        "ADDRFAM=$ADDRFAM" \
+        "METHOD=$METHOD"
+
+wait_for_interface
